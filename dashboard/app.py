@@ -19,30 +19,51 @@ st.set_page_config(
 
 
 # --------------------------------------------------
-# Custom Styling
+# Custom Styling (Crisp Professional Enterprise Light Aesthetic)
 # --------------------------------------------------
 st.markdown(
     """
     <style>
-        .stMetric > div {
-            background-color: #161a23;
-            padding: 14px 18px;
-            border-radius: 8px;
-            border: 1px solid #2a3142;
+        .stApp {
+            background-color: #FFFFFF !important;
+            color: #0F172A !important;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        h1, h2, h3, h4, p, span, label {
+            color: #0F172A !important;
+        }
+
+        div[data-testid="stMetric"] {
+            background-color: #F8FAFC !important;
+            border: 1px solid #E2E8F0 !important;
+            border-radius: 6px !important;
+            padding: 14px 18px !important;
         }
 
         [data-testid="stMetricValue"] {
-            font-size: clamp(1.15rem, 2vw, 1.8rem);
+            font-size: clamp(1.15rem, 2vw, 1.6rem);
+            font-weight: 700 !important;
+            color: #0F172A !important;
         }
 
         [data-testid="stMetricLabel"] {
-            font-size: 0.9rem;
-            white-space: normal;
+            font-size: 0.8rem !important;
+            font-weight: 600 !important;
+            color: #475569 !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.05em !important;
         }
 
         .block-container {
             padding-top: 2rem;
             padding-bottom: 2rem;
+        }
+
+        hr {
+            border: 0;
+            border-top: 1px solid #E2E8F0 !important;
+            margin: 1.5rem 0 !important;
         }
     </style>
     """,
@@ -51,27 +72,26 @@ st.markdown(
 
 
 # --------------------------------------------------
-# Database Configuration
+# Database Configuration (Robust Cloud & Local Resolution)
 # --------------------------------------------------
-DB_USER = os.getenv("DB_USER", "analytics_user")
-DB_PASS = os.getenv("DB_PASS", "analytics_password")
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = os.getenv("DB_PORT", "5433")
-DB_NAME = os.getenv("DB_NAME", "analytics_warehouse")
+if "DATABASE_URL" in st.secrets:
+    DB_URL = st.secrets["DATABASE_URL"]
+else:
+    DB_USER = os.getenv("DB_USER", "analytics_user")
+    DB_PASS = os.getenv("DB_PASS", "analytics_password")
+    DB_HOST = os.getenv("DB_HOST", "localhost")
+    DB_PORT = os.getenv("DB_PORT", "5433")
+    DB_NAME = os.getenv("DB_NAME", "analytics_warehouse")
+
+    user = quote_plus(DB_USER)
+    password = quote_plus(DB_PASS)
+    DB_URL = f"postgresql+psycopg2://{user}:{password}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 
 @st.cache_resource
 def get_db_engine():
-    user = quote_plus(DB_USER)
-    password = quote_plus(DB_PASS)
-
-    database_url = (
-        f"postgresql+psycopg2://{user}:{password}"
-        f"@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-    )
-
     return create_engine(
-        database_url,
+        DB_URL,
         pool_pre_ping=True,
         connect_args={"connect_timeout": 10},
     )
@@ -84,20 +104,21 @@ def load_data():
     with engine.connect() as connection:
         connection.execute(text("SELECT 1"))
 
-        churn_df = pd.read_sql(
-            "SELECT * FROM public.mart_churn_risk_scores",
-            con=connection,
-        )
+        # Load tables safely (falling back if schema prefix isn't required by Postgres)
+        try:
+            churn_df = pd.read_sql("SELECT * FROM public.mart_churn_risk_scores", con=connection)
+        except Exception:
+            churn_df = pd.read_sql("SELECT * FROM mart_churn_risk_scores", con=connection)
 
-        retention_df = pd.read_sql(
-            "SELECT * FROM public.fct_monthly_retention",
-            con=connection,
-        )
+        try:
+            retention_df = pd.read_sql("SELECT * FROM public.fct_monthly_retention", con=connection)
+        except Exception:
+            retention_df = pd.read_sql("SELECT * FROM fct_monthly_retention", con=connection)
 
-        customer_dim = pd.read_sql(
-            "SELECT * FROM public.dim_customers",
-            con=connection,
-        )
+        try:
+            customer_dim = pd.read_sql("SELECT * FROM public.dim_customers", con=connection)
+        except Exception:
+            customer_dim = pd.read_sql("SELECT * FROM dim_customers", con=connection)
 
     return churn_df, retention_df, customer_dim
 
@@ -365,7 +386,7 @@ with tab_risk:
                 },
                 na_rep="—",
             ),
-            width="stretch",
+            use_container_width=True,
             height=380,
         )
 
@@ -424,10 +445,10 @@ with tab_analytics:
     chart1, chart2 = st.columns(2)
 
     risk_colors = {
-        "Critical": "#ff4b4b",
-        "High": "#ffa421",
-        "Medium": "#ffe066",
-        "Low": "#21c354",
+        "Critical": "#DC2626",
+        "High": "#EA580C",
+        "Medium": "#64748B",
+        "Low": "#0284C7",
     }
 
     with chart1:
@@ -458,11 +479,15 @@ with tab_analytics:
                 },
             )
 
-            fig_bar.update_layout(template="plotly_dark")
+            fig_bar.update_layout(
+                plot_bgcolor="#FFFFFF",
+                paper_bgcolor="#FFFFFF",
+                font_color="#0F172A",
+            )
 
             st.plotly_chart(
                 fig_bar,
-                width="stretch",
+                use_container_width=True,
             )
 
     with chart2:
@@ -485,11 +510,15 @@ with tab_analytics:
                 color_discrete_map=risk_colors,
             )
 
-            fig_donut.update_layout(template="plotly_dark")
+            fig_donut.update_layout(
+                plot_bgcolor="#FFFFFF",
+                paper_bgcolor="#FFFFFF",
+                font_color="#0F172A",
+            )
 
             st.plotly_chart(
                 fig_donut,
-                width="stretch",
+                use_container_width=True,
             )
 
 
@@ -547,17 +576,19 @@ with tab_retention:
                 },
                 x=retention_pivot.columns,
                 y=cohort_labels,
-                color_continuous_scale="Teal",
+                color_continuous_scale=["#F1F5F9", "#94A3B8", "#1E293B"],
                 aspect="auto",
                 text_auto=".1f",
             )
 
             fig_heat.update_layout(
-                template="plotly_dark",
+                plot_bgcolor="#FFFFFF",
+                paper_bgcolor="#FFFFFF",
+                font_color="#0F172A",
                 height=450,
             )
 
             st.plotly_chart(
                 fig_heat,
-                width="stretch",
+                use_container_width=True,
             )
