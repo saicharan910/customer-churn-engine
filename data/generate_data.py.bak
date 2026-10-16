@@ -1,0 +1,116 @@
+import os
+import random
+import datetime
+import numpy as np
+import pandas as pd
+from faker import Faker
+from sqlalchemy import create_engine
+
+fake = Faker()
+Faker.seed(42)
+np.random.seed(42)
+random.seed(42)
+
+DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_PORT = os.getenv("DB_PORT", "5433")
+DB_USER = os.getenv("DB_USER", "analytics_user")
+DB_PASS = os.getenv("DB_PASS", "analytics_password")
+DB_NAME = os.getenv("DB_NAME", "analytics_warehouse")
+
+ENGINE = create_engine(f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}")
+
+def generate_enterprise_data(num_customers=500):
+    print(f"Generating synthetic enterprise dataset for {num_customers} accounts...")
+
+    # 1. Accounts
+    customer_ids = [f"CUST-{1000 + i}" for i in range(num_customers)]
+    tiers = np.random.choice(["Startup", "Growth", "Enterprise"], size=num_customers, p=[0.5, 0.35, 0.15])
+    signup_dates = [fake.date_between(start_date="-2y", end_date="-6m") for _ in range(num_customers)]
+    
+    df_customers = pd.DataFrame({
+        "customer_id": customer_ids,
+        "company_name": [fake.company() for _ in range(num_customers)],
+        "industry": np.random.choice(["Fintech", "Healthtech", "DevOps", "EdTech", "E-Commerce"], size=num_customers),
+        "tier": tiers,
+        "signup_date": pd.to_datetime(signup_dates)
+    })
+
+    # 2. Subscriptions
+    subscriptions = []
+    base_mrr = {"Startup": 299, "Growth": 899, "Enterprise": 2499}
+    
+    for _, row in df_customers.iterrows():
+        c_id = row["customer_id"]
+        start_d = row["signup_date"]
+        tier = row["tier"]
+        mrr = base_mrr[tier] + round(np.random.uniform(-50, 150), 2)
+        
+        # Renewal interval: 1 year
+        renewal_d = start_d + pd.DateOffset(years=1)
+        
+        # Determine status
+        is_churned = np.random.choice([True, False], p=[0.22, 0.78])
+        status = "Active"
+        churn_d = None
+        
+        if is_churned and renewal_d < pd.Timestamp.now():
+            status = "Churned"
+            churn_d = renewal_d
+        
+        subscriptions.append({
+            "subscription_id": f"SUB-{c_id[5:]}",
+            "customer_id": c_id,
+            "mrr_amount": mrr,
+            "status": status,
+            "start_date": start_d,
+            "renewal_date": renewal_d,
+            "churn_date": churn_d
+        })
+    df_subscriptions = pd.DataFrame(subscriptions)
+
+    # 3. Usage Events (Last 180 days)
+    usage_events = []
+    end_date = datetime.date.today()
+    start_date = end_date - datetime.timedelta(days=180)
+    
+    for _, row in df_customers.iterrows():
+        c_id = row["customer_id"]
+        tier = row["tier"]
+        base_logins = {"Startup": 8, "Growth": 25, "Enterprise": 70}[tier]
+        
+        # Introduce engagement decay for churned/high-risk accounts
+        is_decaying = np.random.choice([True, False], p=[0.25, 0.75])
+        
+        cur_date = start_date
+        while cur_date <= end_date:
+            days_ago = (end_date - cur_date).days
+            decay_factor = (1 - (days_ago / 180.0) * 0.7) if is_decaying else 1.0
+            
+            if random.random() > 0.35: # Activity on ~65% of days
+                logins = max(0, int(np.random.poisson(base_logins) * decay_factor))
+                export_count = int(logins * np.random.uniform(0.1, 0.4))
+                api_calls = logins * random.randint(10, 50)
+                
+                usage_events.append({
+                    "event_id": fake.uuid4(),
+                    "customer_id": c_id,
+                    "event_date": cur_date,
+                    "active_users": max(1, int(logins / 3)),
+                    "login_count": logins,
+                    "export_count": export_count,
+                    "api_calls": api_calls
+                })
+            cur_date += datetime.timedelta(days=1)
+            
+    df_usage = pd.DataFrame(usage_events)
+
+    # Export to Postgres
+    with ENGINE.begin() as conn:
+        df_customers.to_sql("raw_customers", conn, if_exists="replace", index=False)
+        df_subscriptions.to_sql("raw_subscriptions", conn, if_exists="replace", index=False)
+        df_usage.to_sql("raw_usage_events", conn, if_exists="replace", index=False)
+    
+    print("Ingestion complete: raw_customers, raw_subscriptions, and raw_usage_events loaded.")
+
+if __name__ == "__main__":
+    generate_enterprise_data()

@@ -1,0 +1,44 @@
+version: 2
+
+models:
+  - name: stg_customers
+    description: "Standardized customer corporate records."
+    columns:
+      - name: customer_id
+        tests:
+          - unique
+          - not_null
+      - name: tier
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['Startup', 'Growth', 'Enterprise']
+
+  - name: stg_subscriptions
+    description: "Subscription contracts and ARR attribution."
+    columns:
+      - name: subscription_id
+        tests:
+          - unique
+          - not_null
+      - name: customer_id
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_customers')
+                field: customer_id
+      - name: mrr_amount
+        tests:
+          - not_null
+
+  - name: stg_usage_events
+    description: "Product session events cleaned and cast."
+    columns:
+      - name: event_id
+        tests:
+          - unique
+          - not_null
+      - name: customer_id
+        tests:
+          - not_null
